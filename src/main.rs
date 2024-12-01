@@ -1,33 +1,84 @@
-use raylib::prelude::*;
 use raylib::consts::KeyboardKey::*;
+use raylib::ffi::Rectangle;
+use raylib::prelude::*;
+use std::collections::HashMap;
 
-const BOARD_SIZE: i32 = 10;
-const TILE_SIZE: i32 = 80;
-const TILE_SPACING: i32 = 2;
-const SCREEN_WIDTH: i32 = BOARD_SIZE * (TILE_SIZE + TILE_SPACING);
-const SCREEN_HEIGHT: i32 = BOARD_SIZE * (TILE_SIZE + TILE_SPACING);
-const PLAYER_SPEED: f32 = 3.0;
+const SCREEN_WIDTH: i32 = 1024;
+const SCREEN_HEIGHT: i32 = 800;
 
-
-pub struct Player {
-    position: Vector2,
+struct PlayerAction {
     image: Texture2D,
+    width_frame: i32,
+    quantity_frame: i32,
+    speed: f32,
 }
 
-pub struct Board {
-    tiles: Vec<Vec<i32>>,
+struct Player {
+    position: Vector2,
+    actions: HashMap<String, PlayerAction>,
+    frame: i32,
 }
 
-fn get_player_position(position: Vector2, off_x: i32, off_y: i32) -> Vector2 {
-    Vector2::new(
-        (position.x as i32 * TILE_SIZE + (TILE_SPACING * position.x as i32) + off_x).as_f32(),
-        (position.y as i32 * TILE_SIZE + (TILE_SPACING * position.y as i32) + off_y).as_f32(),
-    )
+impl Player {
+    pub fn new() -> Self {
+        Player {
+            position: Vector2::new(0.0, 0.0),
+            actions: HashMap::new(),
+            frame: 0,
+        }
+    }
+
+    pub fn register_action(
+        &mut self,
+        name: String,
+        image: Texture2D,
+        width_frame: i32,
+        quantity_frame: i32,
+        speed: f32,
+    ) {
+        self.actions.insert(
+            name,
+            PlayerAction {
+                image: image,
+                width_frame,
+                quantity_frame,
+                speed,
+            },
+        );
+    }
+
+    pub fn draw(&mut self, mut d: RaylibDrawHandle, time: f64) {
+        let action = self.actions.get("walk").unwrap();
+
+        let frame = (time / action.speed as f64) as i32 % action.quantity_frame;
+
+        d.draw_texture_pro(
+            &action.image,
+            Rectangle {
+                x: frame as f32 * action.width_frame as f32,
+                y: 0.0,
+                width: action.width_frame as f32,
+                height: action.width_frame as f32,
+            },
+            Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: action.width_frame as f32,
+                height: action.width_frame as f32,
+            },
+            Vector2::new(0.0, 0.0),
+            0.0,
+            Color::WHITE,
+        );
+
+        self.frame += 1;
+
+        if (self.frame > action.quantity_frame) {
+            self.frame = 0;
+        }
+    }
 }
 
-fn is_player_allowed_to_move(position: Vector2) -> bool {
-    position.x >= 0.0 && position.x < BOARD_SIZE as f32 && position.y >= 0.0 && position.y < BOARD_SIZE as f32
-}
 
 pub fn main() {
     let (mut rl, thread) = raylib::init()
@@ -35,55 +86,19 @@ pub fn main() {
         .title("raylib [core] example - basic window")
         .vsync()
         .build();
-    rl.set_target_fps(10);
+    rl.set_target_fps(60);
 
-    let tile_texture = rl.load_texture(&thread, "assets/g26.png").unwrap();
-    let mut player = Player {
-        position: Vector2::new(0.0, 0.0),
-        image: rl.load_texture(&thread, "assets/player.png").unwrap(),
-    };
+    let mut players = Player::new();
+    let texture = rl.load_texture(&thread, "assets/samurai/walk.png").unwrap();
 
-    let player_offset_x = (TILE_SIZE - player.image.width()) / 2;
-    let player_offset_y = (TILE_SIZE - player.image.height()) / 2;
+    players.register_action("walk".to_string(), texture, 128, 8, 0.1);
 
     while !rl.window_should_close() {
+        let time = rl.get_time();
         let mut d = rl.begin_drawing(&thread);
 
-        if d.is_key_down(KEY_DOWN) && is_player_allowed_to_move(Vector2::new(player.position.x, player.position.y + 1.0)) {
-            player.position.y += 1.0f32;
-        }
+        d.clear_background(Color::WHITE);
 
-        if d.is_key_down(KEY_UP) && is_player_allowed_to_move(Vector2::new(player.position.x, player.position.y - 1.0)) {
-            player.position.y -= 1.0f32;
-        }
-
-        if d.is_key_down(KEY_LEFT) && is_player_allowed_to_move(Vector2::new(player.position.x - 1.0, player.position.y)) {
-            player.position.x -= 1.0f32;
-        }
-
-        if d.is_key_down(KEY_RIGHT) && is_player_allowed_to_move(Vector2::new(player.position.x + 1.0, player.position.y)) {
-            player.position.x += 1.0f32;
-        }
-
-
-        d.clear_background(Color::BLACK);
-        for x in 0..BOARD_SIZE {
-            for y in 0..BOARD_SIZE {
-                d.draw_texture_v(
-                    &tile_texture,
-                    Vector2::new(
-                        (x * TILE_SIZE + (TILE_SPACING * x)).as_f32(),
-                        (y * TILE_SIZE + (TILE_SPACING * y)).as_f32(),
-                    ),
-                    Color::WHITE,
-                );
-            }
-        }
-
-        d.draw_texture_v(
-            &player.image,
-            get_player_position(player.position, player_offset_x, player_offset_y),
-            Color::WHITE,
-        );
+        players.draw(d, time);
     }
 }
